@@ -13,3 +13,6 @@ OTHER_FILES += \
     my-malloc.graphml
 
 QMAKE_CXXFLAGS += -std=c++11
+
+HEADERS += \
+    config.h

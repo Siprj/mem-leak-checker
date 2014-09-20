@@ -12,9 +12,10 @@
 #include <stdint.h>
 #include <atomic>
 
+// include configuration
+#include "config.h"
 
-#define LOCKFILE "mem-leak-analysis.bin"
-#define LOCKFILE_SUMARY "mem-leak-analysis-sumary.txt"
+#include "../common-headers/common-enums.h"
 
 
 #ifdef __cplusplus
@@ -43,12 +44,9 @@ std::atomic<int> numberOfMemalign(0);
 std::atomic_flag loggingInMallocOn = ATOMIC_FLAG_INIT;
 
 
-// Set backtrace length.
-#define BACK_TRACE_LENGTH 4
-
-
 typedef struct {
     u_int8_t typeNumberId;              // Type of data chunk.
+    u_int8_t data[];
 }DataChunkBase;
 
 typedef struct __attribute__ ((packed)) {
@@ -62,15 +60,6 @@ typedef struct __attribute__ ((packed)) {
     u_int8_t typeNumberId;              // Type of data chunk.
     void* addressOfNewMemory;           // Address to be freed.
 } DataChunkFree;
-
-
-enum {
-    CHUNK_TYPE_ID_MALLOC = 1,
-    CHUNK_TYPE_ID_FREE = 2,
-    CHUNK_TYPE_ID_CALLOC = 3,
-    CHUNK_TYPE_ID_REALLOC = 4,
-    CHUNK_TYPE_ID_MEMALIGN = 5
-};
 
 
 // Initialize memory leak checker.
@@ -89,9 +78,11 @@ static void __attribute__((constructor)) initMemLeakChecker()
     logFileFd = open(LOCKFILE, O_WRONLY | O_CREAT | O_TRUNC ,
                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
-    u_int32_t sizeOfPointer = sizeof(void*);
+    u_int8_t sizeOfPointer = sizeof(void*);
+    u_int8_t backtraceLength = BACK_TRACE_LENGTH;
     fprintf(stdout, "sizeOfPointer: %d [bytes]\n", sizeOfPointer);
-    write(logFileFd, &sizeOfPointer, sizeof(u_int32_t));
+    write(logFileFd, &sizeOfPointer, sizeof(u_int8_t));
+    write(logFileFd, &backtraceLength, sizeof(u_int8_t));
 
     // close the logging file for future use (this will flush the data)
     close(logFileFd);
@@ -182,10 +173,6 @@ static void  __attribute__((destructor)) deinitMemLeakChecker()
 
 void *malloc(size_t size)
 {
-    // Increment number of malloc calls (can by relaxed because nothing else
-    // depend on it).
-    numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
-
     // Use malloc function from libc library (standard malloc) and store address
     // of new allocated memory.
     void *ptr = libcMalloc(size);
@@ -195,6 +182,10 @@ void *malloc(size_t size)
     // TODO: Check memory order of this if!!!!!
     if(loggingInMallocOn.test_and_set(std::memory_order_relaxed))
     {
+        // Increment number of malloc calls (can by relaxed because nothing else
+        // depend on it).
+        numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
+
         DataChunkMalloc dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
         dataChunk.addressOfNewMemory = ptr;
