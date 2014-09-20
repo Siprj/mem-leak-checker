@@ -27,23 +27,31 @@ int main()
     cout<<"Test app start!"<<endl;
     TestObject *b1 = new TestObject;
     TestObject *b2 = new TestObject;
-    TestObject *b3 = new TestObject;
     cout<<"Object created"<<endl;
+
+    delete b2;
+    b1 = new TestObject;
+
+    TestObject *testObjectArray = new TestObject[10];
+    (void)testObjectArray;
 
     cout<<"malloc in main\n";
     int *i = (int*)malloc(sizeof(int));
     cout<<"free in main\n";
     free(i);
+    int *array = (int*)calloc(100, sizeof(int));
+    (void)array;
+
+    int *array2 = (int*)realloc(array, 200*(sizeof(int)));
+    (void)array2;
 
     cout<<"Create dynamic array";
-    int *pole = new int[20];
+    int *array3 = new int[20];
     cout<<"Delet dynamic array\n";
-    delete []pole;
     cout<<"Delete objects\n";
 
+    delete []array3;
     delete b1;
-    delete b2;
-    delete b3;
 
     return 0;
 }
