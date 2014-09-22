@@ -4,13 +4,9 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 SOURCES += \
-    my-malloc.cpp
+    memory-hooks.cpp
 
 LIBS += -fPIC -ldl
-
-OTHER_FILES += \
-    README.md \
-    my-malloc.graphml
 
 QMAKE_CXXFLAGS += -std=c++11
 
