@@ -2,6 +2,10 @@
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <stdio.h>
+#include <thread>
+#include <list>
+
+#define NUMBER_OF_THREADS 10
 
 using namespace std;
 
@@ -21,8 +25,7 @@ private:
     int i;
 };
 
-
-int main()
+void memLeakFunction()
 {
     cout<<"Test app start!"<<endl;
     TestObject *b1 = new TestObject;
@@ -52,6 +55,21 @@ int main()
 
     delete []array3;
     delete b1;
+}
+
+
+int main()
+{
+    list<thread> threadList;
+
+    for(int i = 0; i < NUMBER_OF_THREADS; ++i)
+    {
+        threadList.push_back(thread(memLeakFunction));
+    }
+    for(thread &thread : threadList)
+    {
+        thread.join();
+    }
 
     return 0;
 }
