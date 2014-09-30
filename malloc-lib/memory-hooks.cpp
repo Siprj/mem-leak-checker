@@ -75,7 +75,7 @@ static void __attribute__((constructor)) initMemLeakChecker()
     // Header are 4 bytes and it store size of pointer (size can chane by HW
     // architecture).
     int logFileFd;
-    logFileFd = open(LOCKFILE, O_WRONLY | O_CREAT | O_TRUNC ,
+    logFileFd = open(LOG_FILE, O_WRONLY | O_CREAT | O_TRUNC ,
                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
     u_int8_t sizeOfPointer = sizeof(void*);
@@ -104,7 +104,7 @@ static void __attribute__((constructor)) initMemLeakChecker()
 void storeDataChunk(void* dataChunk)
 {
     int logFileFd;
-    logFileFd = open(LOCKFILE, O_WRONLY | O_CREAT | O_APPEND ,
+    logFileFd = open(LOG_FILE, O_WRONLY | O_CREAT | O_APPEND ,
                      S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
     int writeSize;
@@ -143,7 +143,7 @@ void storeDataChunk(void* dataChunk)
 void storeSumary()
 {
     // Open text logging file and truncate it (new summary will be written).
-    int sumaryLogFileFd = open(LOCKFILE_SUMARY, O_WRONLY | O_CREAT | O_TRUNC ,
+    int sumaryLogFileFd = open(LOG_FILE_SUMARY, O_WRONLY | O_CREAT | O_TRUNC ,
                S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
     // Generate new summary message.
