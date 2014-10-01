@@ -1,12 +1,14 @@
 #include <QCoreApplication>
 #include <QStringList>
 #include <iostream>
+#include <getopt.h>
 
 #include <QByteArray>
 #include <QFile>
 #include <QList>
 
 #include "../common-headers/common-enums.h"
+
 
 
 typedef struct __attribute__ ((packed)) {
@@ -23,23 +25,74 @@ QList<void*> freeList;
 #include <QDebug>
 #include <sstream>
 
+struct GlobalOptions{
+    std::string addr2line;
+    std::string application;
+    std::string file;
+}globalOptions;
+
+void parseOptions(int argc, char *argv[])
+{
+    while (1)
+    {
+        static struct option long_options[] =
+        {
+            /* These options set a flag. */
+            {"application", required_argument, NULL, 'a'},
+            {"addr2line",   required_argument, NULL, 'l'},
+            {"file",        required_argument, NULL, 'f'},
+            /* These options don’t set a flag.
+                     We distinguish them by their indices. */
+            {"help",        no_argument,       NULL, 'h'},
+            {0, 0, 0, 0}
+        };
+        /* getopt_long stores the option index here. */
+        int option_index = 0;
+
+        int c = getopt_long(argc, argv, "a:l:f:h", long_options, &option_index);
+
+        /* Detect the end of the options. */
+        if (c == -1)
+            break;
+
+        switch (c)
+        {
+        case 'a':
+            printf("option -a\n%s\n", optarg);
+            globalOptions.application.append(optarg);
+            break;
+        case 'l':
+            globalOptions.addr2line.append(optarg);
+            printf("option -l\n%s\n", optarg);
+            break;
+        case 'f':
+            globalOptions.file.append(optarg);
+            printf("option -f\n%s\n", optarg);
+            break;
+        case 'h':
+            printf("Usage: %s -f <input file> -a <tested application> -l <platform addr2line> \n\n"
+                   "-a --application    application which will be used as parameter to addr2line\n"
+                   "-l --addr2line      addr2line specific for platform\n"
+                   "-f --file           file which will be used as source data\n"
+                   "-h --help           show this message\n", argv[0]);
+            exit(0);
+            break;
+        default:
+            abort();
+        }
+    }
+}
+
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
-    QStringList argumentList = a.arguments();
-
-    for(int i = 0; i < argumentList.size(); i++)
-    {
-        std::cout<<argumentList[i].toStdString()<<std::endl;
-    }
+    parseOptions(argc, argv);
 
 
-    QFile file("/mnt/Programing/build-mem-leak-checker-Desktop-Debug/test-app/m"
-               "em-leak-analysis.bin");
+    QFile file(globalOptions.file.c_str());
     if (!file.open(QIODevice::ReadOnly))
     {
-        qCritical()<<"file can(t be opened\n";
+        qCritical()<<"file can't be opened\n";
         return 1;
     }
 
@@ -77,14 +130,14 @@ int main(int argc, char *argv[])
         {
             qDebug()<<"*******************************************************";
             qDebug()<<"memory leak at address: "<<mallocList.at(i).address
-                    <<" size of memory leak: "<< mallocList.at(i).memorySize
-                    <<" bytes\nback trace:\n";
+                   <<" size of memory leak: "<< mallocList.at(i).memorySize
+                   <<" bytes\nback trace:\n";
             for(int y = 0; y < backtraceLength; y++)
             {
                 std::stringstream stream;
-                stream<<"addr2line -e /mnt/Programing/build-mem-leak-checker-De"
-                        "sktop-Debug/test-app/test-app "
-                      <<mallocList.at(i).backtrace[y];
+                stream<<globalOptions.addr2line.c_str()<<" -e "
+                     <<globalOptions.application.c_str()<<" "
+                     <<mallocList.at(i).backtrace[y];
                 system(stream.str().c_str());
             }
             qDebug()<<"\n";
