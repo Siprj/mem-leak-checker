@@ -43,7 +43,8 @@ std::atomic<int> numberOfMemalign(0);
 enum InitStates{
     NOT_INIT = 0,
     INIT_IN_PROGRESS = 1,
-    INIT_DONE = 2
+    FIRST_BACKTRACE_IN_PROGRESS = 2,
+    INIT_DONE = 3
 };
 std::atomic<int>initsState(0);
 
@@ -85,6 +86,8 @@ void storeSumary();
 // check if init is done in memory hooks!!!
 static void __attribute__((constructor)) initMemLeakChecker()
 {
+    initRecursiveMutex.lock();
+    initsState.store(InitStates::INIT_IN_PROGRESS);
     // Find all original memory functions.
     // No point in continuing if any memory function wasn't found.
     libcMalloc     = (void* (*)(size_t))dlsym(RTLD_NEXT, "malloc");
@@ -113,12 +116,17 @@ static void __attribute__((constructor)) initMemLeakChecker()
     // Close the logging file for future use (this will flush the data)
     close(logFileFd);
 
+    initsState.store(InitStates::FIRST_BACKTRACE_IN_PROGRESS);
 
     // First backtrace will call malloc so we need to call it here to prevent
     // recursive call of malloc. After that the logging in malloc can be
     // switched on.
     void *buffer[BACK_TRACE_LENGTH];
+    printf("first backtrace start\n");
     backtrace(buffer, BACK_TRACE_LENGTH);
+    printf("first backtrace stop\n");
+    initsState.store(InitStates::INIT_DONE);
+    initRecursiveMutex.unlock();
 }
 
 
@@ -199,7 +207,6 @@ static void  __attribute__((destructor)) deinitMemLeakChecker()
 
 void *malloc(size_t size)
 {
-
     // This atomic operation is here only for "beter" performace
     // We don't want to serialize malloc call with mutex
     if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
@@ -209,9 +216,7 @@ void *malloc(size_t size)
         initRecursiveMutex.lock();
         if(initsState.load() == InitStates::NOT_INIT)
         {
-            initsState.store(InitStates::INIT_IN_PROGRESS);
             initMemLeakChecker();
-            initsState.store(InitStates::INIT_DONE);
         }
         // If this function is call from the same thread is time of
         // initialization we whould return NULL becouse pointer to original
@@ -222,6 +227,11 @@ void *malloc(size_t size)
             initRecursiveMutex.unlock();
             return NULL;
 
+        }
+        if(initsState.load(std::memory_order_acq_rel) == InitStates::FIRST_BACKTRACE_IN_PROGRESS)
+        {
+            initRecursiveMutex.unlock();
+            return libcMalloc(size);
         }
         initRecursiveMutex.unlock();
     }
@@ -244,8 +254,8 @@ void *malloc(size_t size)
     dataChunk.memorySize = size;
 
     // Don't know if we care about return value
-    //        int numberOfBacktraces;
-    /*numberOfBacktraces = */backtrace(dataChunk.backTrace, BACK_TRACE_LENGTH);
+    /*int numberOfBacktraces;
+    numberOfBacktraces = */backtrace(dataChunk.backTrace, BACK_TRACE_LENGTH);
 
     storeDataChunk((void*)&dataChunk);
 
@@ -264,9 +274,7 @@ void free(void *ptr)
         initRecursiveMutex.lock();
         if(initsState.load() == InitStates::NOT_INIT)
         {
-            initsState.store(InitStates::INIT_IN_PROGRESS);
             initMemLeakChecker();
-            initsState.store(InitStates::INIT_DONE);
         }
         initRecursiveMutex.unlock();
     }
@@ -295,9 +303,7 @@ void *realloc(void *ptr, size_t size)
         initRecursiveMutex.lock();
         if(initsState.load() == InitStates::NOT_INIT)
         {
-            initsState.store(InitStates::INIT_IN_PROGRESS);
             initMemLeakChecker();
-            initsState.store(InitStates::INIT_DONE);
         }
         initRecursiveMutex.unlock();
     }
@@ -322,9 +328,7 @@ void *calloc(size_t nmemb, size_t size)
         initRecursiveMutex.lock();
         if(initsState.load() == InitStates::NOT_INIT)
         {
-            initsState.store(InitStates::INIT_IN_PROGRESS);
             initMemLeakChecker();
-            initsState.store(InitStates::INIT_DONE);
         }
         // If this function is call from the same thread is time of
         // initialization we whould return NULL becouse pointer to original
@@ -360,9 +364,7 @@ void *memalign(size_t blocksize, size_t bytes)
         initRecursiveMutex.lock();
         if(initsState.load() == InitStates::NOT_INIT)
         {
-            initsState.store(InitStates::INIT_IN_PROGRESS);
             initMemLeakChecker();
-            initsState.store(InitStates::INIT_DONE);
         }
         initRecursiveMutex.unlock();
     }

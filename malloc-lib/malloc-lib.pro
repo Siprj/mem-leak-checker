@@ -9,6 +9,7 @@ SOURCES += \
 LIBS += -fPIC -ldl
 
 QMAKE_CXXFLAGS += -std=c++11
+QMAKE_LFLAGS += -std=c++11
 
 HEADERS += \
     config.h
