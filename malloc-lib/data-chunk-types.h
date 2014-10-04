@@ -13,7 +13,7 @@ typedef struct {
 typedef struct __attribute__ ((packed)) {
     u_int8_t typeNumberId;              // Type of data chunk.
     void* addressOfNewMemory;           // Address of new memory.
-    u_int32_t memorySize;               // Size of allocated memory.
+    u_int64_t memorySize;               // Size of allocated memory.
     void* backTrace[BACK_TRACE_LENGTH]; // Backtrace of last n calls.
 } DataChunkMalloc;
 

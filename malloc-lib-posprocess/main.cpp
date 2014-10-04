@@ -13,7 +13,7 @@
 
 typedef struct __attribute__ ((packed)) {
     void* address;
-    int memorySize;
+    u_int64_t memorySize;
     void* backtrace[4];
 }mallocStructure;
 
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
         case CHUNK_TYPE_ID_MALLOC:
             mallocStructure mallocStruc;
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
-            file.read((char*)&mallocStruc.memorySize, 4);
+            file.read((char*)&mallocStruc.memorySize, 8);
             file.read((char*)mallocStruc.backtrace,
                       backtraceLength*pointerSizeInBytes);
             mallocList.append(mallocStruc);
