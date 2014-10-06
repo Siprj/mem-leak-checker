@@ -43,8 +43,7 @@ std::atomic<int> numberOfMemalign(0);
 enum InitStates{
     NOT_INIT = 0,
     INIT_IN_PROGRESS = 1,
-    FIRST_BACKTRACE_IN_PROGRESS = 2,
-    INIT_DONE = 3
+    INIT_DONE = 2
 };
 std::atomic<int>initsState(0);
 
@@ -58,12 +57,36 @@ static void initMemLeakChecker();
 static void  __attribute__((destructor)) deinitMemLeakChecker();
 
 
+// RecursiveCallCounter is thread specific variable which distinguish if the
+// thread is calling memory hooks recursively. Some of internal implementation 
+// may cause memory allocation (backtrace, etc.).
+__thread int recursiveCallCounter = 0;
+
+
+// Check if the memory hooks are called recursively  or if it is first call per
+// thread. Must be called inside of all memory hooks!!!
+// It must be used in pair with leavFunction().
+// You could say it is acquire.
+bool isFirstCall()
+{
+    return !recursiveCallCounter++;
+}
+
+// It is opposite of isFirstCall() function. It releases hook.
+void leavFunction()
+{
+    recursiveCallCounter--;
+}
+
+
 // Initialize memory leak checker.
 // This function is not sometimes called by starting program so we need to
 // check if init is done by memory hooks!!!
 static void initMemLeakChecker()
 {
-    initRecursiveMutex.lock();
+    isFirstCall();      // Don't care about return value. We know this is not
+                        // called recursively. But must be called for future
+                        // checks.
     initsState.store(InitStates::INIT_IN_PROGRESS);
     // Find all original memory functions.
     // No point in continuing if any memory function wasn't found.
@@ -78,7 +101,9 @@ static void initMemLeakChecker()
     libcMemalign   = (void* (*)(size_t, size_t))dlsym(RTLD_NEXT, "memalign");
     assert(libcMemalign != NULL);
 
-    initsState.store(InitStates::FIRST_BACKTRACE_IN_PROGRESS);
+    // Init of libc function pointers is now complet and the rest will be
+    // handled by isFirstCall() and leavFunction() functions.
+    initsState.store(InitStates::INIT_DONE);
 
     // First backtrace will call malloc so we need to call it here to prevent
     // recursive call of malloc. After that the logging in malloc can be
@@ -88,9 +113,7 @@ static void initMemLeakChecker()
 
     // Initialize data storage
     DataChunStorage::initDataChunkStorage();
-
-    initsState.store(InitStates::INIT_DONE);
-    initRecursiveMutex.unlock();
+    leavFunction();
 }
 
 
@@ -105,10 +128,15 @@ static void  __attribute__((destructor)) deinitMemLeakChecker()
 }
 
 
-void *malloc(size_t size)
+/*!
+ * \brief isInitInProgress
+ * \return return false if pointer to libc are not init yet.
+ */
+bool isInitInProgress()
 {
     // This atomic operation is here only for "better" performance.
     // We don't want malloc call to serialize calls with mutex.
+    // Serialization is caused only when init is in progress.
     if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
     {
         // This lock is recursive to ensure no deadlock while initializing.
@@ -117,128 +145,117 @@ void *malloc(size_t size)
         {
             initMemLeakChecker();
         }
-        // If this function is call from the same thread and is time of 
-        // initialization, we should return NULL because pointer to original 
+        // If this function is call from the same thread and is time of
+        // initialization, we should return NULL because pointer to original
         // malloc is not set.
         if(initsState.load(std::memory_order_acq_rel) == InitStates::INIT_IN_PROGRESS)
         {
             // Clean after function.
             initRecursiveMutex.unlock();
-            return NULL;
+            return false;
 
         }
-        if(initsState.load(std::memory_order_acq_rel) == InitStates::FIRST_BACKTRACE_IN_PROGRESS)
-        {
-            initRecursiveMutex.unlock();
-            return libcMalloc(size);
-        }
         initRecursiveMutex.unlock();
+    }
+    return true;
+}
+
+
+void *malloc(size_t size)
+{
+    if(!isInitInProgress())
+    {
+        return NULL;
     }
 
     // Use malloc function from libc library (standard malloc) and store address
     // of new allocated memory.
     void *ptr = libcMalloc(size);
 
-    // Increment number of malloc calls (can be relaxed because nothing else
-    // depend on it).
-    numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
+    if(isFirstCall())
+    {
+        // Increment number of malloc calls (can be relaxed because nothing else
+        // depend on it).
+        numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
 
-    DataChunkMalloc dataChunk;
-    dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
-    dataChunk.addressOfNewMemory = ptr;
-    dataChunk.memorySize = size;
+        DataChunkMalloc dataChunk;
+        dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
+        dataChunk.addressOfNewMemory = ptr;
+        dataChunk.memorySize = size;
 
-    // Generate backtrace report.
-    backtrace(dataChunk.backTrace, BACK_TRACE_LENGTH);
+        // Generate backtrace report.
+        backtrace(dataChunk.backTrace, BACK_TRACE_LENGTH);
 
-    DataChunStorage::storeDataChunk((void*)&dataChunk);
+        DataChunStorage::storeDataChunk((void*)&dataChunk);
+    }
 
+    leavFunction();
     return ptr;
 }
 
 
 void free(void *ptr)
 {
-    // This atomic operation is here only for "better" performance.
-    // We don't want malloc call to serialize calls with mutex.
-    if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
+    if(!isInitInProgress())
     {
-        // This lock is recursive to ensure no deadlock while initializing.
-        initRecursiveMutex.lock();
-        if(initsState.load() == InitStates::NOT_INIT)
-        {
-            initMemLeakChecker();
-        }
-        initRecursiveMutex.unlock();
+        return;
     }
 
-
-    // Increment number of free calls (can be relaxed because nothing else
-    // depend on it).
-    numberOfFree.fetch_add(1, std::memory_order_relaxed);
     libcFree(ptr);
 
-    DataChunkFree dataChunk;
-    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
-    dataChunk.addressOfNewMemory = ptr;
-    DataChunStorage::storeDataChunk(&dataChunk);
+    if(isFirstCall())
+    {
+        // Increment number of free calls (can be relaxed because nothing else
+        // depend on it).
+        numberOfFree.fetch_add(1, std::memory_order_relaxed);
+
+        DataChunkFree dataChunk;
+        dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+        dataChunk.addressOfNewMemory = ptr;
+        DataChunStorage::storeDataChunk(&dataChunk);
+    }
+    leavFunction();
 }
 
 
 void *realloc(void *ptr, size_t size)
 {
-    // This atomic operation is here only for "better" performance.
-    // We don't want malloc call to serialize calls with mutex.
-    if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
+    if(!isInitInProgress())
     {
-        // This lock is recursive to ensure no deadlock while initializing.
-        initRecursiveMutex.lock();
-        if(initsState.load() == InitStates::NOT_INIT)
-        {
-            initMemLeakChecker();
-        }
-        initRecursiveMutex.unlock();
+        return NULL;
     }
 
-
-    // Increment number of realloc calls (can be relaxed because nothing else
-    // depend on it).
-    numberOfRealloc.fetch_add(1, std::memory_order_relaxed);
     void *nptr = libcRealloc(ptr, size);
+
+    if(isFirstCall())
+    {
+        // Increment number of realloc calls (can be relaxed because nothing else
+        // depend on it).
+        numberOfRealloc.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    leavFunction();
     return nptr;
 }
 
 
 void *calloc(size_t nmemb, size_t size)
 {
-    // This atomic operation is here only for "better" performance.
-    // We don't want malloc call to serialize calls with mutex.
-    if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
+    if(!isInitInProgress())
     {
-        // This lock is recursive to ensure no deadlock while initializing.
-        initRecursiveMutex.lock();
-        if(initsState.load() == InitStates::NOT_INIT)
-        {
-            initMemLeakChecker();
-        }
-        // If this function is call from the same thread and is time of 
-        // initialization, we should return NULL because pointer to original 
-        // calloc is not set.
-        if(initsState.load(std::memory_order_acq_rel) == InitStates::INIT_IN_PROGRESS)
-        {
-            // clean after function
-            initRecursiveMutex.unlock();
-            return NULL;
-
-        }
-        initRecursiveMutex.unlock();
+        return NULL;
     }
 
-
-    // Increment number of calloc calls (can be relaxed because nothing else
-    // depend on it).
-    numberOfCalloc.fetch_add(1, std::memory_order_relaxed);
     void *ptr = libcCalloc(nmemb, size);
+
+    if(isFirstCall())
+    {
+        // Increment number of calloc calls (can be relaxed because nothing else
+        // depend on it).
+        numberOfCalloc.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    leavFunction();
     return ptr;
 
 }
@@ -246,25 +263,23 @@ void *calloc(size_t nmemb, size_t size)
 
 void *memalign(size_t blocksize, size_t bytes)
 {
-    // This atomic operation is here only for "better" performance.
-    // We don't want malloc call to serialize calls with mutex.
-    if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
+    if(!isInitInProgress())
     {
-        // This lock is recursive to ensure no deadlock while initializing.
-        initRecursiveMutex.lock();
-        if(initsState.load() == InitStates::NOT_INIT)
-        {
-            initMemLeakChecker();
-        }
-        initRecursiveMutex.unlock();
+        return NULL;
     }
 
-    // Increment number of memalign calls (can be relaxed because nothing else
-    // depend on it).
-    numberOfMemalign.fetch_add(1, std::memory_order_relaxed);
     void *ptr = libcMemalign(blocksize, bytes);
+
+    if(isFirstCall())
+    {
+        // Increment number of memalign calls (can be relaxed because nothing else
+        // depend on it).
+        numberOfMemalign.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    leavFunction();
     return ptr;
 }
 
 
-}
+}   // end of extern "C"
