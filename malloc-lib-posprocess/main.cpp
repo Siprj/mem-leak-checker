@@ -31,6 +31,15 @@ struct GlobalOptions{
     std::string file;
 }globalOptions;
 
+void printUsage(char *argv[])
+{
+    printf("Usage: %s -f <input file> -a <tested application> -l <platform addr2line> \n\n"
+           "-a --application    application which will be used as parameter to addr2line\n"
+           "-l --addr2line      addr2line specific for platform\n"
+           "-f --file           file which will be used as source data\n"
+           "-h --help           show this message\n", argv[0]);
+}
+
 void parseOptions(int argc, char *argv[])
 {
     while (1)
@@ -64,11 +73,7 @@ void parseOptions(int argc, char *argv[])
             globalOptions.file.append(optarg);
             break;
         case 'h':
-            printf("Usage: %s -f <input file> -a <tested application> -l <platform addr2line> \n\n"
-                   "-a --application    application which will be used as parameter to addr2line\n"
-                   "-l --addr2line      addr2line specific for platform\n"
-                   "-f --file           file which will be used as source data\n"
-                   "-h --help           show this message\n", argv[0]);
+            printUsage(argv);
             exit(0);
             break;
         default:
@@ -81,12 +86,19 @@ void parseOptions(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
     parseOptions(argc, argv);
+    if(globalOptions.addr2line.empty() | globalOptions.application.empty() |
+            globalOptions.file.empty())
+    {
+        printf("Some parameter is missing!!!!\n");
+        printUsage(argv);
+        exit(1);
+    }
 
 
     QFile file(globalOptions.file.c_str());
     if (!file.open(QIODevice::ReadOnly))
     {
-        qCritical()<<"file can't be opened\n";
+        qCritical()<<"file: "<<globalOptions.file.c_str()<<" can't be opened\n";
         return 1;
     }
 
