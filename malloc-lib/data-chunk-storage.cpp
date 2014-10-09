@@ -1,5 +1,7 @@
 #include "data-chunk-storage.h"
 
+#include "config.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -120,10 +122,10 @@ void DataChunStorage::storeDataChunk(void *dataChunk)
     switch((int)((DataChunkBase*)dataChunk)->typeNumberId)
     {
     case CHUNK_TYPE_ID_MALLOC:
-        writeSize = sizeof(DataChunkMalloc)+1;
+        writeSize = sizeof(DataChunkMalloc);
         break;
     case CHUNK_TYPE_ID_FREE:
-        writeSize = sizeof(DataChunkFree)+1;
+        writeSize = sizeof(DataChunkFree);
         break;
     case CHUNK_TYPE_ID_CALLOC:
         writeSize = 0;  // Set to zero for now.

@@ -178,7 +178,7 @@ void *malloc(size_t size)
         dataChunk.mallocChunk.memorySize = size;
         dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
 
-        DataChunStorage::storeDataChunk((void*)&dataChunk);
+        DataChunStorage::storeDataChunk(&dataChunk);
     }
 
     leavFunction();

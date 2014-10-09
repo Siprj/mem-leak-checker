@@ -14,7 +14,7 @@
 typedef struct __attribute__ ((packed)) {
     void* address;
     u_int64_t memorySize;
-    void* backtrace[4];
+    void* backtrace;
 }mallocStructure;
 
 
@@ -37,12 +37,9 @@ void parseOptions(int argc, char *argv[])
     {
         static struct option long_options[] =
         {
-            /* These options set a flag. */
             {"application", required_argument, NULL, 'a'},
             {"addr2line",   required_argument, NULL, 'l'},
             {"file",        required_argument, NULL, 'f'},
-            /* These options don’t set a flag.
-                     We distinguish them by their indices. */
             {"help",        no_argument,       NULL, 'h'},
             {0, 0, 0, 0}
         };
@@ -58,16 +55,13 @@ void parseOptions(int argc, char *argv[])
         switch (c)
         {
         case 'a':
-            printf("option -a\n%s\n", optarg);
             globalOptions.application.append(optarg);
             break;
         case 'l':
             globalOptions.addr2line.append(optarg);
-            printf("option -l\n%s\n", optarg);
             break;
         case 'f':
             globalOptions.file.append(optarg);
-            printf("option -f\n%s\n", optarg);
             break;
         case 'h':
             printf("Usage: %s -f <input file> -a <tested application> -l <platform addr2line> \n\n"
@@ -99,9 +93,6 @@ int main(int argc, char *argv[])
     QByteArray array = file.read(1);        // read first byte of header
     int pointerSizeInBytes = *(u_int8_t*)array.data();
     qDebug()<<"Pointer size: "<<pointerSizeInBytes;
-    array = file.read(1);                   // read second byte of header
-    u_int8_t backtraceLength = *(u_int8_t*)array.data();
-    qDebug()<<"Backtrace lenght: "<<backtraceLength;
 
     while(!file.atEnd())
     {
@@ -112,8 +103,7 @@ int main(int argc, char *argv[])
             mallocStructure mallocStruc;
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
             file.read((char*)&mallocStruc.memorySize, 8);
-            file.read((char*)mallocStruc.backtrace,
-                      backtraceLength*pointerSizeInBytes);
+            file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
             mallocList.append(mallocStruc);
             break;
         case CHUNK_TYPE_ID_FREE:
@@ -132,14 +122,12 @@ int main(int argc, char *argv[])
             qDebug()<<"memory leak at address: "<<mallocList.at(i).address
                    <<" size of memory leak: "<< mallocList.at(i).memorySize
                    <<" bytes\nback trace:\n";
-            for(int y = 0; y < backtraceLength; y++)
-            {
-                std::stringstream stream;
+
+            std::stringstream stream;
                 stream<<globalOptions.addr2line.c_str()<<" -e "
-                     <<globalOptions.application.c_str()<<" "
-                     <<mallocList.at(i).backtrace[y];
+                      <<globalOptions.application.c_str()<<" "
+                      <<mallocList.at(i).backtrace;
                 system(stream.str().c_str());
-            }
             qDebug()<<"\n";
         }
         freeList.removeOne(mallocList.at(i).address);
