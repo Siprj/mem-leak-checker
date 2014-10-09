@@ -8,8 +8,4 @@
 // Environment variable name to set outputpath
 #define ENV_OUTPUT_PATH "MEM_LEAK_OUT"
 
-
-// Set backtrace length.
-#define BACK_TRACE_LENGTH 4
-
 #endif // CONFIG_H

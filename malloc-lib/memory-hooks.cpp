@@ -105,12 +105,6 @@ static void initMemLeakChecker()
     // handled by isFirstCall() and leavFunction() functions.
     initsState.store(InitStates::INIT_DONE);
 
-    // First backtrace will call malloc so we need to call it here to prevent
-    // recursive call of malloc. After that the logging in malloc can be
-    // switched on.
-    void *buffer[BACK_TRACE_LENGTH];
-    backtrace(buffer, BACK_TRACE_LENGTH);
-
     // Initialize data storage
     DataChunStorage::initDataChunkStorage();
     leavFunction();
@@ -178,13 +172,11 @@ void *malloc(size_t size)
         // depend on it).
         numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
 
-        DataChunkMalloc dataChunk;
+        DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
-        dataChunk.addressOfNewMemory = ptr;
-        dataChunk.memorySize = size;
-
-        // Generate backtrace report.
-        backtrace(dataChunk.backTrace, BACK_TRACE_LENGTH);
+        dataChunk.mallocChunk.addressOfNewMemory = ptr;
+        dataChunk.mallocChunk.memorySize = size;
+        dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
 
         DataChunStorage::storeDataChunk((void*)&dataChunk);
     }
@@ -209,9 +201,9 @@ void free(void *ptr)
         // depend on it).
         numberOfFree.fetch_add(1, std::memory_order_relaxed);
 
-        DataChunkFree dataChunk;
+        DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
-        dataChunk.addressOfNewMemory = ptr;
+        dataChunk.freeChunk.addressOfNewMemory = ptr;
         DataChunStorage::storeDataChunk(&dataChunk);
     }
     leavFunction();
