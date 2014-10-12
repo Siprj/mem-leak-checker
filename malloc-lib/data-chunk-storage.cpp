@@ -34,14 +34,12 @@ static int logFileFd;
 std::atomic_flag storeChunkLock = ATOMIC_FLAG_INIT;
 
 DataChunkBase dataCache[NUMBER_OF_CACHES][CACHE_SIZE];
-std::atomic<int> indexWritting[NUMBER_OF_CACHES];
-std::atomic<int> indexWritten[NUMBER_OF_CACHES];
+std::atomic<int> indexStoreing[NUMBER_OF_CACHES];
+std::atomic<int> indexStored[NUMBER_OF_CACHES];
 std::atomic<int> cacheIndex;
 
-std::atomic<int> storeDataChunk5;
-
 namespace DataChunStorage {
-    void writeCache(int cacheNumber);
+    void writeCache(int cacheNumber, int numberOfEntries);
 }
 
 
@@ -119,26 +117,32 @@ void DataChunStorage::initDataChunkStorage()
     // Init cache variables
     for(int i = 0; i < NUMBER_OF_CACHES; i++)
     {
-        indexWritting[i] = 0;
-        indexWritten[i] = 0;
+        indexStoreing[i] = 0;
+        indexStored[i] = 0;
     }
     cacheIndex = 0;
-    storeDataChunk5 = 0;
 }
 
 
 void DataChunStorage::deinitDataChunkStorage()
 {
+    for(int i = 0; i < NUMBER_OF_CACHES; i++)
+    {
+        if(indexStored[i].load() > 0)
+        {
+            writeCache(i,indexStored[i].load()-1);
+        }
+    }
     close(logFileFd);
 }
 
 
-void DataChunStorage::writeCache(int cacheNumber)
+void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
 {
     // Lock until all data are written
     while (storeChunkLock.test_and_set()) {}
 
-    for(int i = 0; i < CACHE_SIZE; i++)
+    for(int i = 0; i < numberOfEntries; i++)
     {
         int writeSize;
         switch((int)dataCache[cacheNumber][i].typeNumberId)
@@ -175,17 +179,16 @@ void DataChunStorage::storeDataChunk(void *dataChunk)
     while(true)     // infinite loop until passed chunk is stored in chache
     {
         int currentCache = cacheIndex.load();
-        int indexInsideCache = indexWritting[currentCache].fetch_add(1);
+        int indexInsideCache = indexStoreing[currentCache].fetch_add(1);
         if(indexInsideCache < CACHE_SIZE)
         {
             dataCache[currentCache][indexInsideCache] = *(DataChunkBase*)dataChunk;
-            if(indexWritting[currentCache].fetch_add(1) == CACHE_SIZE-1)
+            if(indexStored[currentCache].fetch_add(1) == CACHE_SIZE-1)
             {
-                writeCache(currentCache);
-                indexWritten[currentCache] = 0;
-                indexWritting[currentCache] = 0;
+                writeCache(currentCache, CACHE_SIZE);
+                indexStored[currentCache] = 0;
+                indexStoreing[currentCache] = 0;
             }
-            storeDataChunk5++;
             return;
         }
         else if(indexInsideCache == CACHE_SIZE)   // Index is now pointing out of the array
@@ -194,7 +197,7 @@ void DataChunStorage::storeDataChunk(void *dataChunk)
             if(nextCacheIndex >= NUMBER_OF_CACHES)
                 nextCacheIndex++;
 
-            while(indexWritting[nextCacheIndex].load() != 0)
+            while(indexStoreing[nextCacheIndex].load() != 0)
                 ;   // Wait until data from next cache are written
             // Increment cache number
             cacheIndex.store(nextCacheIndex);
