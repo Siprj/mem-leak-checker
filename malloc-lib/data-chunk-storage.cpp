@@ -29,16 +29,22 @@ static int logFileFd;
 
 
 // Flag which lock store chung function to make it thread safe
-// TODO: Second flag will be probably used for acceleration of writing 
-// into file in parallel apps.
 std::atomic_flag storeChunkLock = ATOMIC_FLAG_INIT;
 
+// "Atomic" cache for data chunks. The atomicity should speed up whole process
+// of saving data.
 DataChunkBase dataCache[NUMBER_OF_CACHES][CACHE_SIZE];
+// Index to cache. Indicate which indexes was already acquired by any writer.
 std::atomic<int> indexStoreing[NUMBER_OF_CACHES];
+// Index to cache. Indicate which indexes was already written by any writer.
 std::atomic<int> indexStored[NUMBER_OF_CACHES];
+// This variable distinguish between caches.
 std::atomic<int> cacheIndex;
 
 namespace DataChunStorage {
+    // Function wich take number of cache and write it in to file. Also second
+    // parameter is top boundary of cache (number of entries which will be
+    // written).
     void writeCache(int cacheNumber, int numberOfEntries);
 }
 
@@ -126,6 +132,7 @@ void DataChunStorage::initDataChunkStorage()
 
 void DataChunStorage::deinitDataChunkStorage()
 {
+    // Write rest of data in to file
     for(int i = 0; i < NUMBER_OF_CACHES; i++)
     {
         if(indexStored[i].load() > 0)
@@ -142,6 +149,8 @@ void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
     // Lock until all data are written
     while (storeChunkLock.test_and_set()) {}
 
+    // Go through cache and identify all data chunks. Write them with the
+    // correct size.
     for(int i = 0; i < numberOfEntries; i++)
     {
         int writeSize;
