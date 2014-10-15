@@ -17,7 +17,6 @@ AC_PROG_AWK
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
-AC_PROG_RANLIB
 
 # Checks for libraries.
 AC_SEARCH_LIBS([dlsym], [dl], [], [AC_MSG_ERROR([no suitable dl library found])])

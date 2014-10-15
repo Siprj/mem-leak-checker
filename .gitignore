@@ -41,3 +41,4 @@ stamp-h1
 .libs
 mem-leak-analysis*
 test-app/test-app
+malloc-lib-posprocess/malloc-lib-posprocess
