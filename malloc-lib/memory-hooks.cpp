@@ -115,9 +115,9 @@ static void initMemLeakChecker()
 // It finish reports and clean resources.
 static void  __attribute__((destructor)) deinitMemLeakChecker()
 {
-    DataChunStorage::storeSummary(numberOfMalloc.load(), numberOfFree.load(),
-                                  numberOfCalloc.load(), numberOfRealloc.load(),
-                                  numberOfMemalign.load());
+    DataChunStorage::storeSummary(numberOfMalloc.load(std::memory_order_relaxed), numberOfFree.load(std::memory_order_relaxed),
+                                  numberOfCalloc.load(std::memory_order_relaxed), numberOfRealloc.load(std::memory_order_relaxed),
+                                  numberOfMemalign.load(std::memory_order_relaxed));
     DataChunStorage::deinitDataChunkStorage();
 }
 
@@ -126,12 +126,13 @@ static void  __attribute__((destructor)) deinitMemLeakChecker()
  * \brief isInitInProgress
  * \return return false if pointer to libc are not init yet.
  */
+// TODO: Add std::memory_order flags
 bool isInitInProgress()
 {
     // This atomic operation is here only for "better" performance.
     // We don't want malloc call to serialize calls with mutex.
     // Serialization is caused only when init is in progress.
-    if(initsState.load(std::memory_order_acq_rel) != InitStates::INIT_DONE)
+    if(initsState.load() != InitStates::INIT_DONE)
     {
         // This lock is recursive to ensure no deadlock while initializing.
         initRecursiveMutex.lock();
@@ -142,7 +143,7 @@ bool isInitInProgress()
         // If this function is call from the same thread and is time of
         // initialization, we should return NULL because pointer to original
         // malloc is not set.
-        if(initsState.load(std::memory_order_acq_rel) == InitStates::INIT_IN_PROGRESS)
+        if(initsState.load() == InitStates::INIT_IN_PROGRESS)
         {
             // Clean after function.
             initRecursiveMutex.unlock();
