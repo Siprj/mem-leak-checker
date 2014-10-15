@@ -1,29 +1,28 @@
-#include <QCoreApplication>
-#include <QStringList>
 #include <iostream>
 #include <getopt.h>
+#include <list>
+#include <sstream>
+#include <cstdint>
+#include <assert.h>
+#include <fstream>
+#include <algorithm>
+#include <unistd.h>
 
-#include <QByteArray>
-#include <QFile>
-#include <QList>
 
 #include "../common-headers/common-enums.h"
 
 
 
 typedef struct __attribute__ ((packed)) {
-    void* address;
+    u_int64_t address;
     u_int64_t memorySize;
-    void* backtrace;
+    u_int64_t backtrace;
 }mallocStructure;
 
 
-QList<mallocStructure> mallocList;
-QList<void*> freeList;
+std::list<mallocStructure> mallocList;
+std::list<u_int64_t> freeList;
 
-
-#include <QDebug>
-#include <sstream>
 
 struct GlobalOptions{
     std::string addr2line;
@@ -85,6 +84,8 @@ void parseOptions(int argc, char *argv[])
 
 int main(int argc, char *argv[])
 {
+    u_int8_t data[100];
+
     parseOptions(argc, argv);
     if(globalOptions.addr2line.empty() | globalOptions.application.empty() |
             globalOptions.file.empty())
@@ -95,56 +96,76 @@ int main(int argc, char *argv[])
     }
 
 
-    QFile file(globalOptions.file.c_str());
-    if (!file.open(QIODevice::ReadOnly))
+    std::ifstream file;
+    file.open(globalOptions.file, std::fstream::in|std::fstream::binary);
+    if (!file.is_open())
     {
-        qCritical()<<"file: "<<globalOptions.file.c_str()<<" can't be opened\n";
+        std::cerr<<"file: "<<globalOptions.file<<" can't be opened\n";
         return 1;
     }
 
-    QByteArray array = file.read(1);        // read first byte of header
-    int pointerSizeInBytes = *(u_int8_t*)array.data();
-    qDebug()<<"Pointer size: "<<pointerSizeInBytes;
-
-    while(!file.atEnd())
+    file.read((char*)data, 1);        // read first byte of header
+    int pointerSizeInBytes = *(u_int8_t*)data;
+    std::cerr<<"Pointer size: "<<pointerSizeInBytes<<std::endl;
+    if(pointerSizeInBytes != 8 && pointerSizeInBytes != 4)
     {
-        QByteArray type = file.read(1);
-        switch((int)*type.data())
+        std::cerr<<"Wrong data format\n";
+        exit(1);
+    }
+
+    // Check if all data are readed
+    while(file.good())
+    {
+        file.read((char*)data, 1);
+        switch((int)*data)
         {
         case CHUNK_TYPE_ID_MALLOC:
             mallocStructure mallocStruc;
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
             file.read((char*)&mallocStruc.memorySize, 8);
             file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
-            mallocList.append(mallocStruc);
+            mallocList.push_back(mallocStruc);
             break;
         case CHUNK_TYPE_ID_FREE:
-            void *address;
+            u_int64_t address;
             file.read((char*)&address, pointerSizeInBytes);
-            freeList.append(address);
+            freeList.push_back(address);
             break;
         }
     }
 
-    for(int i = 0; i < mallocList.size(); i++)
+    std::list<u_int64_t>::iterator it;
+
+    for(mallocStructure mallocData : mallocList)
     {
-        if(!freeList.contains(mallocList.at(i).address))
+        it = std::find(freeList.begin(), freeList.end(), mallocData.address);
+        if(it == freeList.end())
         {
-            qDebug()<<"*******************************************************";
-            qDebug()<<"memory leak at address: "<<mallocList.at(i).address
-                   <<" size of memory leak: "<< mallocList.at(i).memorySize
-                   <<" bytes\nback trace:\n";
+            std::cerr<<"*******************************************************"
+                       "\n";
+            std::cerr<<"memory leak at address: 0x"<<std::hex<<mallocData.address
+                   <<" size of memory leak: "<<std::dec<<mallocData.memorySize
+                   <<" bytes\nreturn address: 0x"<<std::hex
+                   <<mallocData.backtrace<<"\n\n";
 
             std::stringstream stream;
                 stream<<globalOptions.addr2line.c_str()<<" -e "
-                      <<globalOptions.application.c_str()<<" "
-                      <<mallocList.at(i).backtrace;
-                system(stream.str().c_str());
-            qDebug()<<"\n";
+                      <<globalOptions.application.c_str()<<" 0x"<<std::hex
+                      <<mallocData.backtrace;
+                std::cerr<<"system call: "<<stream.str()<<std::endl;
+                std::cerr.flush();
+                int ret = system(stream.str().c_str());
+                (void)ret;
+                usleep(50000);
+            std::cerr<<"\n";
         }
-        freeList.removeOne(mallocList.at(i).address);
+        else
+        {
+            freeList.erase(it);
+        }
     }
 
 
     //return a.exec();
 }
+
