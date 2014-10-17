@@ -42,3 +42,5 @@ stamp-h1
 mem-leak-analysis*
 test-app/test-app
 malloc-lib-posprocess/malloc-lib-posprocess
+*.trs
+test-driver
