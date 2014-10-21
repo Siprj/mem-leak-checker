@@ -116,7 +116,8 @@ void DataChunStorage::initDataChunkStorage()
         exit(1);
     }
     u_int8_t sizeOfPointer = sizeof(void*);
-    write(logFileFd, &sizeOfPointer, sizeof(u_int8_t));
+    int i = write(logFileFd, &sizeOfPointer, sizeof(u_int8_t));
+    (void)i;
     fsync(logFileFd);
 
 
@@ -175,7 +176,8 @@ void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
         writeSize = 0;
         break;
         }
-        write(logFileFd, (char*)&dataCache[cacheNumber][i], writeSize);
+        int written = write(logFileFd, (char*)&dataCache[cacheNumber][i], writeSize);
+        (void)written;
     }
     // Unlock writeing
     storeChunkLock.clear();
@@ -231,7 +233,8 @@ void DataChunStorage::storeSummary(int mallocCount, int freeCount,
             "memalign: %d\n", mallocCount, freeCount, callocCount, reallocCount,
             memalignCount);
     // Write message into file
-    write(summaryLogFileFd, &string, strlen(string));
+    int written = write(summaryLogFileFd, &string, strlen(string));
+    (void)written;
     // Close logging file
     close(summaryLogFileFd);
 }
