@@ -1,5 +1,3 @@
-mem-leak-checker.pro.user
-mem-leak-checker.pro.user*
 /autom4te.cache/
 /config/
 Makefile
@@ -44,3 +42,4 @@ test-app/test-app
 malloc-lib-posprocess/malloc-lib-posprocess
 *.trs
 test-driver
+*.user
