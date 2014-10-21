@@ -80,8 +80,6 @@ void leavFunction()
 
 
 // Initialize memory leak checker.
-// This function is not sometimes called by starting program so we need to
-// check if init is done by memory hooks!!!
 static void initMemLeakChecker()
 {
     isFirstCall();      // Don't care about return value. We know this is not
@@ -282,17 +280,23 @@ void* operator new(size_t size)
 {
     if(!isInitInProgress())
     {
-        return NULL;
+        throw std::bad_alloc();
     }
 
     void *ptr = libcMalloc(size);;
+    if(ptr == NULL)
+    {
+         throw std::bad_alloc();
+    }
 
+    // Fill malloc data chunk.
     DataChunkBase dataChunk;
     dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
     dataChunk.mallocChunk.addressOfNewMemory = ptr;
     dataChunk.mallocChunk.memorySize = size;
     dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
 
+    // Store data chunk in to cache.
     DataChunStorage::storeDataChunk((void*)&dataChunk);
 
     return ptr;
@@ -303,17 +307,75 @@ void* operator new[](size_t size)
 {
     if(!isInitInProgress())
     {
-        return NULL;
+        throw std::bad_alloc();
     }
 
     void *ptr = libcMalloc(size);
+    if(ptr == NULL)
+    {
+         throw std::bad_alloc();
+    }
 
+    // Fill malloc data chunk.
     DataChunkBase dataChunk;
     dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
     dataChunk.mallocChunk.addressOfNewMemory = ptr;
     dataChunk.mallocChunk.memorySize = size;
     dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
 
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk((void*)&dataChunk);
+
+    return ptr;
+}
+
+
+void* operator new(std::size_t size, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!isInitInProgress())
+    {
+        return NULL;
+    }
+
+    void *ptr = libcMalloc(size);;
+
+    // Fill malloc data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
+    dataChunk.mallocChunk.addressOfNewMemory = ptr;
+    dataChunk.mallocChunk.memorySize = size;
+    dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk((void*)&dataChunk);
+
+    return ptr;
+}
+
+
+void* operator new[](std::size_t size, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!isInitInProgress())
+    {
+        throw std::bad_alloc();
+    }
+
+    void *ptr = libcMalloc(size);;
+    if(ptr == NULL)
+    {
+         throw std::bad_alloc();
+    }
+
+    // Fill malloc data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
+    dataChunk.mallocChunk.addressOfNewMemory = ptr;
+    dataChunk.mallocChunk.memorySize = size;
+    dataChunk.mallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
+
+    // Store data chunk in to cache.
     DataChunStorage::storeDataChunk((void*)&dataChunk);
 
     return ptr;
@@ -327,10 +389,12 @@ void operator delete(void *ptr)
         return;
     }
 
+    // Fill free data chunk.
     DataChunkBase dataChunk;
     dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
     dataChunk.freeChunk.addressOfNewMemory = ptr;
 
+    // Store data chunk in to cache.
     DataChunStorage::storeDataChunk(&dataChunk);
 
     libcFree(ptr);
@@ -346,9 +410,51 @@ void operator delete[](void *ptr)
 
     libcFree(ptr);
 
+    // Fill free data chunk.
     DataChunkBase dataChunk;
     dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
     dataChunk.freeChunk.addressOfNewMemory = ptr;
 
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete(void *ptr, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!isInitInProgress())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete[](void *ptr, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!isInitInProgress())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
     DataChunStorage::storeDataChunk(&dataChunk);
 }
