@@ -11,6 +11,6 @@
 #define CACHE_SIZE 100
 #define NUMBER_OF_CACHES 2
 
-#define DEBUG_FUNCTIONS
+#define DEBUG_ENABLE
 
 #endif // CONFIG_H
