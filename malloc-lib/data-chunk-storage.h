@@ -10,7 +10,7 @@ namespace DataChunStorage
     void deinitDataChunkStorage();
     void storeDataChunk(void* dataChunk);
 
-    void storeSummary(int mallocCount, int freeCount,
+    void storeSummary(int allocationCount, int deallocationCount,
                              int callocCount, int reallocCount,
                              int memalignCount);
 }

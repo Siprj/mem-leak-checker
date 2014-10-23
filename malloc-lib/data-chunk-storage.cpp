@@ -217,7 +217,7 @@ void DataChunStorage::storeDataChunk(void *dataChunk)
 }
 
 
-void DataChunStorage::storeSummary(int mallocCount, int freeCount,
+void DataChunStorage::storeSummary(int allocationCount, int deallocationCount,
                                    int callocCount, int reallocCount,
                                    int memalignCount)
 {
@@ -229,8 +229,8 @@ void DataChunStorage::storeSummary(int mallocCount, int freeCount,
     // Generate new summary message.
     // This method was chosen because of no memory allocation is presented.
     char string[200];
-    sprintf(string, "malloc: %d\nfree: %d\ncalloc: %d\nrealloc: %d\n"
-            "memalign: %d\n", mallocCount, freeCount, callocCount, reallocCount,
+    sprintf(string, "allocations: %d\ndeallocations: %d\ncalloc: %d\nrealloc: %d\n"
+            "memalign: %d\n", allocationCount, deallocationCount, callocCount, reallocCount,
             memalignCount);
     // Write message into file
     int written = write(summaryLogFileFd, &string, strlen(string));

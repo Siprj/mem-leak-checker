@@ -33,8 +33,8 @@ void * (*libcMemalign)(size_t blocksize, size_t bytes);
 
 
 // Static variables counting number of calls each memory operation functions.
-std::atomic<int> numberOfMalloc(0);
-std::atomic<int> numberOfFree(0);
+std::atomic<int> numberOfAllocations(0);
+std::atomic<int> numberOfDeallocations(0);
 std::atomic<int> numberOfCalloc(0);
 std::atomic<int> numberOfRealloc(0);
 std::atomic<int> numberOfMemalign(0);
@@ -113,7 +113,7 @@ static void initMemLeakChecker()
 // It finish reports and clean resources.
 static void  __attribute__((destructor)) deinitMemLeakChecker()
 {
-    DataChunStorage::storeSummary(numberOfMalloc.load(std::memory_order_relaxed), numberOfFree.load(std::memory_order_relaxed),
+    DataChunStorage::storeSummary(numberOfAllocations.load(std::memory_order_relaxed), numberOfDeallocations.load(std::memory_order_relaxed),
                                   numberOfCalloc.load(std::memory_order_relaxed), numberOfRealloc.load(std::memory_order_relaxed),
                                   numberOfMemalign.load(std::memory_order_relaxed));
     DataChunStorage::deinitDataChunkStorage();
@@ -121,11 +121,11 @@ static void  __attribute__((destructor)) deinitMemLeakChecker()
 
 
 /*!
- * \brief isInitInProgress
- * \return return false if pointer to libc are not init yet.
+ * \brief waitForInit
+ * \return return false if init failed to libc are not init yet.
  */
 // TODO: Add std::memory_order flags
-bool isInitInProgress()
+bool waitForInit()
 {
     // This atomic operation is here only for "better" performance.
     // We don't want malloc call to serialize calls with mutex.
@@ -156,7 +156,7 @@ bool isInitInProgress()
 
 void *malloc(size_t size)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return NULL;
     }
@@ -167,9 +167,10 @@ void *malloc(size_t size)
 
     if(isFirstCall())
     {
-        // Increment number of malloc calls (can be relaxed because nothing else
-        // depend on it).
-        numberOfMalloc.fetch_add(1, std::memory_order_relaxed);
+        // printf("malloc: %p\n", ptr);
+        // Increment number of allocations calls (can be relaxed because nothing
+        // else depend on it).
+        numberOfAllocations.fetch_add(1, std::memory_order_relaxed);
 
         DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_MALLOC;
@@ -187,7 +188,7 @@ void *malloc(size_t size)
 
 void free(void *ptr)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return;
     }
@@ -196,9 +197,10 @@ void free(void *ptr)
 
     if(isFirstCall())
     {
-        // Increment number of free calls (can be relaxed because nothing else
-        // depend on it).
-        numberOfFree.fetch_add(1, std::memory_order_relaxed);
+        // printf("free: %p\n", ptr);
+        // Increment number of deallocation calls (can be relaxed because
+        // nothing else depend on it).
+        numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
 
         DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
@@ -211,7 +213,7 @@ void free(void *ptr)
 
 void *realloc(void *ptr, size_t size)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return NULL;
     }
@@ -220,6 +222,7 @@ void *realloc(void *ptr, size_t size)
 
     if(isFirstCall())
     {
+        // printf("realloc: previous %p, new %p\n", ptr, nptr);
         // Increment number of realloc calls (can be relaxed because nothing else
         // depend on it).
         numberOfRealloc.fetch_add(1, std::memory_order_relaxed);
@@ -232,7 +235,7 @@ void *realloc(void *ptr, size_t size)
 
 void *calloc(size_t nmemb, size_t size)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return NULL;
     }
@@ -241,6 +244,7 @@ void *calloc(size_t nmemb, size_t size)
 
     if(isFirstCall())
     {
+        // printf("calloc: %p\n", ptr);
         // Increment number of calloc calls (can be relaxed because nothing else
         // depend on it).
         numberOfCalloc.fetch_add(1, std::memory_order_relaxed);
@@ -254,7 +258,7 @@ void *calloc(size_t nmemb, size_t size)
 
 void *memalign(size_t blocksize, size_t bytes)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return NULL;
     }
@@ -263,6 +267,7 @@ void *memalign(size_t blocksize, size_t bytes)
 
     if(isFirstCall())
     {
+        // printf("memalign: %p\n", ptr);
         // Increment number of memalign calls (can be relaxed because nothing else
         // depend on it).
         numberOfMemalign.fetch_add(1, std::memory_order_relaxed);
@@ -278,7 +283,7 @@ void *memalign(size_t blocksize, size_t bytes)
 
 void* operator new(size_t size)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         throw std::bad_alloc();
     }
@@ -288,6 +293,11 @@ void* operator new(size_t size)
     {
          throw std::bad_alloc();
     }
+
+    // printf("new(size_t size): %p\n", ptr);
+    // Increment number of allocation calls (can be relaxed because nothing else
+    // depend on it).
+    numberOfAllocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill malloc data chunk.
     DataChunkBase dataChunk;
@@ -305,7 +315,7 @@ void* operator new(size_t size)
 
 void* operator new[](size_t size)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         throw std::bad_alloc();
     }
@@ -315,6 +325,11 @@ void* operator new[](size_t size)
     {
          throw std::bad_alloc();
     }
+
+    // printf("new[](size_t size): %p\n", ptr);
+    // Increment number of allocation calls (can be relaxed because nothing else
+    // depend on it).
+    numberOfAllocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill malloc data chunk.
     DataChunkBase dataChunk;
@@ -333,12 +348,17 @@ void* operator new[](size_t size)
 void* operator new(std::size_t size, const std::nothrow_t& tag)
 {
     (void)tag;
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return NULL;
     }
 
     void *ptr = libcMalloc(size);;
+
+    // printf("new(std::size_t size, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of allocation calls (can be relaxed because nothing else
+    // depend on it).
+    numberOfAllocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill malloc data chunk.
     DataChunkBase dataChunk;
@@ -357,7 +377,7 @@ void* operator new(std::size_t size, const std::nothrow_t& tag)
 void* operator new[](std::size_t size, const std::nothrow_t& tag)
 {
     (void)tag;
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         throw std::bad_alloc();
     }
@@ -367,6 +387,11 @@ void* operator new[](std::size_t size, const std::nothrow_t& tag)
     {
          throw std::bad_alloc();
     }
+
+    // printf("new[](std::size_t size, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of allocation calls (can be relaxed because nothing else
+    // depend on it).
+    numberOfAllocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill malloc data chunk.
     DataChunkBase dataChunk;
@@ -384,10 +409,17 @@ void* operator new[](std::size_t size, const std::nothrow_t& tag)
 
 void operator delete(void *ptr)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return;
     }
+
+    libcFree(ptr);
+
+    // printf("delete(void *ptr): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill free data chunk.
     DataChunkBase dataChunk;
@@ -396,19 +428,22 @@ void operator delete(void *ptr)
 
     // Store data chunk in to cache.
     DataChunStorage::storeDataChunk(&dataChunk);
-
-    libcFree(ptr);
 }
 
 
 void operator delete[](void *ptr)
 {
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return;
     }
 
     libcFree(ptr);
+
+    // printf("delete[](void *ptr): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill free data chunk.
     DataChunkBase dataChunk;
@@ -423,12 +458,17 @@ void operator delete[](void *ptr)
 void operator delete(void *ptr, const std::nothrow_t& tag)
 {
     (void)tag;
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return;
     }
 
     libcFree(ptr);
+
+    // printf("delete(void *ptr, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill free data chunk.
     DataChunkBase dataChunk;
@@ -443,12 +483,115 @@ void operator delete(void *ptr, const std::nothrow_t& tag)
 void operator delete[](void *ptr, const std::nothrow_t& tag)
 {
     (void)tag;
-    if(!isInitInProgress())
+    if(!waitForInit())
     {
         return;
     }
 
     libcFree(ptr);
+
+    // printf("delete[](void *ptr, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete(void* ptr, std::size_t sz)
+{
+    if(!waitForInit())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // printf("delete(void *ptr): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete[](void* ptr, std::size_t sz)
+{
+    if(!waitForInit())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // printf("delete(void *ptr): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete(void* ptr, std::size_t sz, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!waitForInit())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // printf("delete[](void *ptr, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
+
+    // Fill free data chunk.
+    DataChunkBase dataChunk;
+    dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
+    dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+    // Store data chunk in to cache.
+    DataChunStorage::storeDataChunk(&dataChunk);
+}
+
+
+void operator delete[](void* ptr, std::size_t sz, const std::nothrow_t& tag)
+{
+    (void)tag;
+    if(!waitForInit())
+    {
+        return;
+    }
+
+    libcFree(ptr);
+
+    // printf("delete[](void *ptr, const std::nothrow_t& tag): %p\n", ptr);
+    // Increment number of deallocation calls (can be relaxed because
+    // nothing else depend on it).
+    numberOfDeallocations.fetch_add(1, std::memory_order_relaxed);
 
     // Fill free data chunk.
     DataChunkBase dataChunk;
