@@ -290,7 +290,7 @@ void *calloc(size_t nmemb, size_t size)
 }
 
 
-void *memalign(size_t blocksize, size_t bytes)
+void *memalign(size_t alignment, size_t size)
 {
     INFO("memalign enter");
     if(!waitForInit())
@@ -298,7 +298,7 @@ void *memalign(size_t blocksize, size_t bytes)
         return NULL;
     }
 
-    void *ptr = libcMemalign(blocksize, bytes);
+    void *ptr = libcMemalign(alignment, size);
 
     DEBUG("memalign ptr: %p", ptr);
 
@@ -311,7 +311,8 @@ void *memalign(size_t blocksize, size_t bytes)
         DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_MEMALIGN;
         dataChunk.memalignChunk.addressOfNewMemory = ptr;
-        dataChunk.memalignChunk.alignment = bytes;
+        dataChunk.memalignChunk.memorySize = size;
+        dataChunk.memalignChunk.alignment = alignment;
         dataChunk.memalignChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
 
         // Store data chunk into cache.

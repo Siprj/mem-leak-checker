@@ -35,6 +35,7 @@ typedef struct __attribute__ ((packed)) {
 typedef struct __attribute__ ((packed)) {
     u_int8_t typeNumberId;              // Type of data chunk.
     void* addressOfNewMemory;           // Address of new memory.
+    u_int32_t memorySize;               // Size of new memory
     u_int32_t alignment;
     void* backTrace;                    // Backtrace of last call.
 } DataChunkMemalign;
