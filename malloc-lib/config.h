@@ -12,5 +12,6 @@
 #define NUMBER_OF_CACHES 2
 
 #define DEBUG_ENABLE
+#define DEBUG_LEVEL DEBUG_LEVEL_WARN
 
 #endif // CONFIG_H

@@ -109,7 +109,7 @@ static void initMemLeakChecker()
     DataChunStorage::initDataChunkStorage();
     leavFunction();
 
-    DEBUG_INIT(DEBUG_LEVEL_DEBUG);
+    DEBUG_INIT(DEBUG_LEVEL);
 }
 
 

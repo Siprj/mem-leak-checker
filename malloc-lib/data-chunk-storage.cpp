@@ -13,6 +13,8 @@
 #include <atomic>
 #include <assert.h>
 
+#include "debug.h"
+
 #include "../common-headers/common-enums.h"
 #include "data-chunk-types.h"
 
@@ -148,7 +150,7 @@ void DataChunStorage::deinitDataChunkStorage()
 void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
 {
     // Lock until all data are written
-    while (storeChunkLock.test_and_set()) {}
+    while (storeChunkLock.test_and_set()) {ERROR("CHACHE IS FULL!!!");}
 
     // Go through cache and identify all data chunks. Write them with the
     // correct size.
