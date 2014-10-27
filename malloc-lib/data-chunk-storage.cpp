@@ -150,7 +150,7 @@ void DataChunStorage::deinitDataChunkStorage()
 void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
 {
     // Lock until all data are written
-    while (storeChunkLock.test_and_set()) {ERROR("CHACHE IS FULL!!!");}
+    while (storeChunkLock.test_and_set()) {ERROR("CACHE IS FULL!!!");}
 
     // Go through cache and identify all data chunks. Write them with the
     // correct size.
@@ -166,15 +166,16 @@ void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
             writeSize = sizeof(DataChunkFree);
             break;
         case CHUNK_TYPE_ID_CALLOC:
-            writeSize = 0; // Set to zero for now.
+            writeSize = sizeof(DataChunkCalloc);
             break;
         case CHUNK_TYPE_ID_REALLOC:
-            writeSize = 0; // Set to zero for now.
+            writeSize = sizeof(DataChunkRealloc);
             break;
         case CHUNK_TYPE_ID_MEMALIGN:
-            writeSize = 0; // Set to zero for now.
+            writeSize = sizeof(DataChunkMemalign);
             break;
         default:
+            ERROR("Unknown chunk type");
             writeSize = 0;
             break;
         }

@@ -213,6 +213,8 @@ void free(void *ptr)
         DataChunkBase dataChunk;
         dataChunk.typeNumberId = CHUNK_TYPE_ID_FREE;
         dataChunk.freeChunk.addressOfNewMemory = ptr;
+
+        // Store data chunk into cache.
         DataChunStorage::storeDataChunk(&dataChunk);
     }
     leavFunction();
@@ -236,6 +238,16 @@ void *realloc(void *ptr, size_t size)
         // Increment number of realloc calls (can be relaxed because nothing else
         // depend on it).
         numberOfRealloc.fetch_add(1, std::memory_order_relaxed);
+
+        DataChunkBase dataChunk;
+        dataChunk.typeNumberId = CHUNK_TYPE_ID_REALLOC;
+        dataChunk.reallocChunk.addressOfNewMemory = nptr;
+        dataChunk.reallocChunk.addressOfOldMemory = ptr;
+        dataChunk.reallocChunk.memorySize = size;
+        dataChunk.reallocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
+
+        // Store data chunk into cache.
+        DataChunStorage::storeDataChunk((void*)&dataChunk);
     }
 
     leavFunction();
@@ -260,6 +272,16 @@ void *calloc(size_t nmemb, size_t size)
         // Increment number of calloc calls (can be relaxed because nothing else
         // depend on it).
         numberOfCalloc.fetch_add(1, std::memory_order_relaxed);
+
+        DataChunkBase dataChunk;
+        dataChunk.typeNumberId = CHUNK_TYPE_ID_CALLOC;
+        dataChunk.callocChunk.addressOfNewMemory = ptr;
+        dataChunk.callocChunk.numberOfMembers = nmemb;
+        dataChunk.callocChunk.sizeOfMember = size;
+        dataChunk.callocChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
+
+        // Store data chunk into cache.
+        DataChunStorage::storeDataChunk((void*)&dataChunk);
     }
 
     leavFunction();
@@ -285,6 +307,15 @@ void *memalign(size_t blocksize, size_t bytes)
         // Increment number of memalign calls (can be relaxed because nothing else
         // depend on it).
         numberOfMemalign.fetch_add(1, std::memory_order_relaxed);
+
+        DataChunkBase dataChunk;
+        dataChunk.typeNumberId = CHUNK_TYPE_ID_MEMALIGN;
+        dataChunk.memalignChunk.addressOfNewMemory = ptr;
+        dataChunk.memalignChunk.alignment = bytes;
+        dataChunk.memalignChunk.backTrace = __builtin_extract_return_addr(__builtin_return_address(0));
+
+        // Store data chunk into cache.
+        DataChunStorage::storeDataChunk((void*)&dataChunk);
     }
 
     leavFunction();
