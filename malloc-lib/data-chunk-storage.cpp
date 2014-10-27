@@ -160,23 +160,23 @@ void DataChunStorage::writeCache(int cacheNumber, int numberOfEntries)
         switch((int)dataCache[cacheNumber][i].typeNumberId)
         {
         case CHUNK_TYPE_ID_MALLOC:
-        writeSize = sizeof(DataChunkMalloc);
-        break;
+            writeSize = sizeof(DataChunkMalloc);
+            break;
         case CHUNK_TYPE_ID_FREE:
-        writeSize = sizeof(DataChunkFree);
-        break;
+            writeSize = sizeof(DataChunkFree);
+            break;
         case CHUNK_TYPE_ID_CALLOC:
-        writeSize = 0; // Set to zero for now.
-        break;
+            writeSize = 0; // Set to zero for now.
+            break;
         case CHUNK_TYPE_ID_REALLOC:
-        writeSize = 0; // Set to zero for now.
-        break;
+            writeSize = 0; // Set to zero for now.
+            break;
         case CHUNK_TYPE_ID_MEMALIGN:
-        writeSize = 0; // Set to zero for now.
-        break;
+            writeSize = 0; // Set to zero for now.
+            break;
         default:
-        writeSize = 0;
-        break;
+            writeSize = 0;
+            break;
         }
         int written = write(logFileFd, (char*)&dataCache[cacheNumber][i], writeSize);
         (void)written;
