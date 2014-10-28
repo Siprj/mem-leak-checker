@@ -127,9 +127,36 @@ int main(int argc, char *argv[])
             mallocList.push_back(mallocStruc);
             break;
         case CHUNK_TYPE_ID_FREE:
-            u_int64_t address;
-            file.read((char*)&address, pointerSizeInBytes);
-            freeList.push_back(address);
+            u_int64_t freeDataAddress;
+            file.read((char*)&freeDataAddress, pointerSizeInBytes);
+            freeList.push_back(freeDataAddress);
+            break;
+        case CHUNK_TYPE_ID_CALLOC:
+            std::cout<<"calloc chunk\n";
+            file.read((char*)&mallocStruc.address, pointerSizeInBytes);
+            u_int32_t numberOfMembers;
+            u_int32_t sizeOfMember;
+            file.read((char*)&numberOfMembers, sizeof(numberOfMembers));
+            file.read((char*)&sizeOfMember, sizeof(sizeOfMember));
+            mallocStruc.memorySize = numberOfMembers * sizeOfMember;
+            file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
+            mallocList.push_back(mallocStruc);
+            break;
+        case CHUNK_TYPE_ID_REALLOC:
+            std::cout<<"realloc chunk\n";
+            file.read((char*)&mallocStruc.address, pointerSizeInBytes);
+            file.read((char*)&freeDataAddress, pointerSizeInBytes);
+            file.read((char*)&mallocStruc.memorySize, 8);
+            file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
+            freeList.push_back(freeDataAddress);
+            mallocList.push_back(mallocStruc);
+            break;
+        case CHUNK_TYPE_ID_MEMALIGN:
+            file.read((char*)&mallocStruc.address, pointerSizeInBytes);
+            file.read((char*)&mallocStruc.memorySize, 8);
+            file.seekg(4, std::ios_base::cur);              // skip 4 bytes
+            file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
+            mallocList.push_back(mallocStruc);
             break;
         }
     }
