@@ -7,28 +7,27 @@
 #include <fstream>
 #include <algorithm>
 #include <unistd.h>
+#include <regex>
 
 
 #include "../common-headers/common-enums.h"
 
 
 
-typedef struct __attribute__ ((packed)) {
+typedef struct{
     u_int64_t address;
     u_int64_t memorySize;
     u_int64_t backtrace;
 }mallocStructure;
 
 
-std::list<mallocStructure> mallocList;
-std::list<u_int64_t> freeList;
-
-
 struct GlobalOptions{
     std::string addr2line;
     std::string application;
     std::string file;
+    bool reduceOutput;
 }globalOptions;
+
 
 void printUsage(char *argv[])
 {
@@ -36,8 +35,10 @@ void printUsage(char *argv[])
            "-a --application    application which will be used as parameter to addr2line\n"
            "-l --addr2line      addr2line specific for platform\n"
            "-f --file           file which will be used as source data\n"
-           "-h --help           show this message\n", argv[0]);
+           "-h --help           show this message\n"
+           "-r --reduced        reduce output (no duplicates)\n", argv[0]);
 }
+
 
 void parseOptions(int argc, char *argv[])
 {
@@ -49,12 +50,13 @@ void parseOptions(int argc, char *argv[])
             {"addr2line",   required_argument, NULL, 'l'},
             {"file",        required_argument, NULL, 'f'},
             {"help",        no_argument,       NULL, 'h'},
+            {"reduce",      no_argument,       NULL, 'r'},
             {0, 0, 0, 0}
         };
         /* getopt_long stores the option index here. */
         int option_index = 0;
 
-        int c = getopt_long(argc, argv, "a:l:f:h", long_options, &option_index);
+        int c = getopt_long(argc, argv, "a:l:f:hr", long_options, &option_index);
 
         /* Detect the end of the options. */
         if (c == -1)
@@ -75,27 +77,72 @@ void parseOptions(int argc, char *argv[])
             printUsage(argv);
             exit(0);
             break;
+        case 'r':
+            globalOptions.reduceOutput = true;
+            break;
         default:
+            std::cerr<<"Unknown argument\n";
             abort();
         }
     }
 }
 
 
-int main(int argc, char *argv[])
+// Unique cheker for mallocStructure.
+bool sameBacktrace(mallocStructure &first, mallocStructure &second)
+{
+    return first.backtrace == second.backtrace;
+}
+
+
+// Comparison backtrace from mallocStructure.
+bool compareBacktrace(mallocStructure &first, mallocStructure &second)
+{
+    return first.backtrace < second.backtrace;
+}
+
+
+int getFileAndLine(std::string &line, int32_t number, u_int64_t backtrace)
+{
+    std::stringstream stream;
+    stream<<globalOptions.addr2line.c_str()<<" -e "
+          <<globalOptions.application.c_str()<<" 0x"<<std::hex
+          <<backtrace;
+
+    FILE *f = popen(stream.str().c_str(), "r");
+    if(f == 0)
+    {
+        std::cerr<<"Could not execute\n";
+        return 1;
+    }
+    const int BUFSIZE = 1000;
+    char buf[BUFSIZE];
+
+    std::cmatch match;
+    std::cerr<<"kvakva\n";
+    std::cerr.flush();
+    //^.*(cpp|c|h|hpp):[[:digit:]].*$
+    std::regex regularExpresion("^.*(cpp|c|h|hpp):[[:digit:]].*$");
+    while(fgets(buf, BUFSIZE, f))
+    {
+        std::cerr<<(stdout, "%s\nahoj:\n", buf);
+        std::cerr.flush();
+        std::regex_search(buf, match, regularExpresion);
+        for(auto out : match)
+        {
+            std::cout<<out<<"\n\n";
+        }
+    }
+    pclose(f);
+    std::cerr<<"\n";
+    return 0;
+}
+
+
+int readData(std::list<mallocStructure> &mallocList,
+             std::list<u_int64_t> &freeList)
 {
     u_int8_t data[100];
-
-    parseOptions(argc, argv);
-    if(globalOptions.addr2line.empty() | globalOptions.application.empty() |
-            globalOptions.file.empty())
-    {
-        printf("Some parameter is missing!!!!\n");
-        printUsage(argv);
-        exit(1);
-    }
-
-
     std::ifstream file;
     file.open(globalOptions.file, std::fstream::in|std::fstream::binary);
     if (!file.is_open())
@@ -106,11 +153,10 @@ int main(int argc, char *argv[])
 
     file.read((char*)data, 1);        // read first byte of header
     int pointerSizeInBytes = *(u_int8_t*)data;
-    std::cerr<<"Pointer size: "<<pointerSizeInBytes<<std::endl;
     if(pointerSizeInBytes != 8 && pointerSizeInBytes != 4)
     {
         std::cerr<<"Wrong data format\n";
-        exit(1);
+        return 1;
     }
 
     // Check if all data are readed
@@ -132,7 +178,6 @@ int main(int argc, char *argv[])
             freeList.push_back(freeDataAddress);
             break;
         case CHUNK_TYPE_ID_CALLOC:
-            std::cout<<"calloc chunk\n";
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
             u_int32_t numberOfMembers;
             u_int32_t sizeOfMember;
@@ -143,7 +188,6 @@ int main(int argc, char *argv[])
             mallocList.push_back(mallocStruc);
             break;
         case CHUNK_TYPE_ID_REALLOC:
-            std::cout<<"realloc chunk\n";
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
             file.read((char*)&freeDataAddress, pointerSizeInBytes);
             file.read((char*)&mallocStruc.memorySize, 8);
@@ -160,37 +204,79 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    return 0;
+}
 
+
+int findLeaks(std::list<mallocStructure> &mallocList,
+              std::list<u_int64_t> &freeList,
+              std::list<mallocStructure> &leakList)
+{
     std::list<u_int64_t>::iterator it;
-
     for(mallocStructure mallocData : mallocList)
     {
         it = std::find(freeList.begin(), freeList.end(), mallocData.address);
         if(it == freeList.end())
-        {
-            std::cerr<<"*******************************************************"
-                       "\n";
-            std::cerr<<"memory leak at address: 0x"<<std::hex<<mallocData.address
-                   <<" size of memory leak: "<<std::dec<<mallocData.memorySize
-                   <<" bytes\nreturn address: 0x"<<std::hex
-                   <<mallocData.backtrace<<"\n\n";
-
-            std::stringstream stream;
-                stream<<globalOptions.addr2line.c_str()<<" -e "
-                      <<globalOptions.application.c_str()<<" 0x"<<std::hex
-                      <<mallocData.backtrace;
-                std::cerr<<"system call: "<<stream.str()<<std::endl;
-                std::cerr.flush();
-                int ret = system(stream.str().c_str());
-                (void)ret;
-                usleep(50000);
-            std::cerr<<"\n";
-        }
+            leakList.push_back(mallocData);
         else
-        {
             freeList.erase(it);
-        }
     }
+    return 0;
+}
+
+
+int printOutput(std::list<mallocStructure> &leakList)
+{
+    for(mallocStructure leakMallocStructure : leakList)
+    {
+        std::cerr<<"*******************************************************"
+                   "\n";
+        std::cerr<<"memory leak at address: 0x"<<std::hex<<leakMallocStructure.address
+               <<" size of memory leak: "<<std::dec<<leakMallocStructure.memorySize
+               <<" bytes\nreturn address: 0x"<<std::hex
+               <<leakMallocStructure.backtrace<<"\n\n";
+        std::string line;
+        int32_t lineNumber;
+        if(getFileAndLine(line, lineNumber, leakMallocStructure.backtrace))
+            return 1;
+
+    }
+}
+
+
+int printReducedOutput(std::list<mallocStructure> &leakList)
+{
+    leakList.sort(compareBacktrace);
+}
+
+
+int main(int argc, char *argv[])
+{
+    std::list<mallocStructure> mallocList;
+    std::list<mallocStructure> leakList;
+    std::list<u_int64_t> freeList;
+
+    parseOptions(argc, argv);
+    if(globalOptions.addr2line.empty() | globalOptions.application.empty() |
+            globalOptions.file.empty())
+    {
+        printf("Some parameter is missing!!!!\n");
+        printUsage(argv);
+        return 1;
+    }
+
+    if(readData(mallocList, freeList))
+        return 1;
+
+    if(findLeaks(mallocList, freeList, leakList))
+        return 1;
+
+//    leakList.unique(sameBacktrace);
+
+    if(globalOptions.reduceOutput)
+        printReducedOutput(leakList);
+    else
+        printOutput(leakList);
 
 
     //return a.exec();

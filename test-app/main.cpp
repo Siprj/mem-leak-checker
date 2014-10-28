@@ -7,6 +7,8 @@
 
 #define NUMBER_OF_THREADS 10
 
+#define MEMORY_LEAK
+
 using namespace std;
 
 class TestObject{
@@ -28,14 +30,14 @@ private:
 void memLeakFunction()
 {
     cout<<"Test app start!"<<endl;
-    TestObject *b1 = new TestObject;
+    MEMORY_LEAK TestObject *b1 = new TestObject;
     TestObject *b2 = new TestObject;
     cout<<"Object created"<<endl;
 
     delete b2;
     b1 = new TestObject;
 
-    TestObject *testObjectArray = new TestObject[10];
+    MEMORY_LEAK TestObject *testObjectArray = new TestObject[10];
     (void)testObjectArray;
 
     cout<<"malloc in main\n";
@@ -43,9 +45,7 @@ void memLeakFunction()
     cout<<"free in main\n";
     free(i);
     int *array = (int*)calloc(100, sizeof(int));
-    (void)array;
-
-    int *array2 = (int*)realloc(array, 200*(sizeof(int)));
+    MEMORY_LEAK int *array2 = (int*)realloc(array, 200*(sizeof(int)));
     (void)array2;
 
     cout<<"Create dynamic array";
