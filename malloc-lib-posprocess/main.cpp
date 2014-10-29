@@ -316,7 +316,7 @@ int printReducedOutput(std::list<MallocStructure> &leakList)
         std::cout<<"summary of leaked memory: "<<std::dec
                <<leakSemmaryEntry.completeLeakedMemory
                <<" bytes\n"
-               <<"number of calles: "<<leakSemmaryEntry.numberOfAllocations
+               <<"number of calls: "<<leakSemmaryEntry.numberOfAllocations
                <<"\nreturn address: 0x"<<std::hex
                <<leakSemmaryEntry.backtrace<<std::dec<<"\n";
 
