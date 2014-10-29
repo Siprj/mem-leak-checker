@@ -12,13 +12,15 @@
 
 #include "../common-headers/common-enums.h"
 
+#include "string-utils.h"
+
 
 
 typedef struct{
     u_int64_t address;
     u_int64_t memorySize;
     u_int64_t backtrace;
-}mallocStructure;
+}MallocStructure;
 
 
 struct GlobalOptions{
@@ -89,20 +91,20 @@ void parseOptions(int argc, char *argv[])
 
 
 // Unique cheker for mallocStructure.
-bool sameBacktrace(mallocStructure &first, mallocStructure &second)
+bool sameBacktrace(MallocStructure &first, MallocStructure &second)
 {
     return first.backtrace == second.backtrace;
 }
 
 
 // Comparison backtrace from mallocStructure.
-bool compareBacktrace(mallocStructure &first, mallocStructure &second)
+bool compareBacktrace(MallocStructure &first, MallocStructure &second)
 {
     return first.backtrace < second.backtrace;
 }
 
 
-int getFileAndLine(std::string &line, int32_t number, u_int64_t backtrace)
+int getFileAndLine(std::string &file, int32_t &line, u_int64_t backtrace)
 {
     std::stringstream stream;
     stream<<globalOptions.addr2line.c_str()<<" -e "
@@ -118,28 +120,40 @@ int getFileAndLine(std::string &line, int32_t number, u_int64_t backtrace)
     const int BUFSIZE = 1000;
     char buf[BUFSIZE];
 
-    std::cmatch match;
-    std::cerr<<"kvakva\n";
-    std::cerr.flush();
-    //^.*(cpp|c|h|hpp):[[:digit:]].*$
-    std::regex regularExpresion("^.*(cpp|c|h|hpp):[[:digit:]].*$");
+    std::vector<std::string> colonSplitStrings;
+    std::vector<std::string> spaceSplitStrings;
+    // addr2line output should look:
+    // /path/to/file:<line_number> (discriminator <number>)
+    // We are interested only in path to file and line.
+    // If addr2line is not able to get filename etc. it prit out:
+    // ??:0
+    // I future the regex could be used but gcc supporting it is not in main
+    // repository yet.
+    // TODO: regexp
+    //^.*(cpp|c|h|hpp):\\d.*$
     while(fgets(buf, BUFSIZE, f))
     {
-        std::cerr<<(stdout, "%s\nahoj:\n", buf);
-        std::cerr.flush();
-        std::regex_search(buf, match, regularExpresion);
-        for(auto out : match)
+        colonSplitStrings = splitString(std::string(buf), ':');
+        // Check if file line patter is wrong
+        if(colonSplitStrings.size() <= 1)
         {
-            std::cout<<out<<"\n\n";
+            std::cerr<<"addr2line error: "<<buf<<"\n";
+            return 1;
         }
+        // Proces line number number part
+        spaceSplitStrings = splitString(colonSplitStrings[1], ' ');
+        if(colonSplitStrings[0].compare("??") == 0)
+            file.clear();
+        else
+            file = colonSplitStrings[0];
+        line = std::stoi(spaceSplitStrings[0]);
     }
     pclose(f);
-    std::cerr<<"\n";
     return 0;
 }
 
 
-int readData(std::list<mallocStructure> &mallocList,
+int readData(std::list<MallocStructure> &mallocList,
              std::list<u_int64_t> &freeList)
 {
     u_int8_t data[100];
@@ -166,7 +180,7 @@ int readData(std::list<mallocStructure> &mallocList,
         switch((int)*data)
         {
         case CHUNK_TYPE_ID_MALLOC:
-            mallocStructure mallocStruc;
+            MallocStructure mallocStruc;
             file.read((char*)&mallocStruc.address, pointerSizeInBytes);
             file.read((char*)&mallocStruc.memorySize, 8);
             file.read((char*)&mallocStruc.backtrace, pointerSizeInBytes);
@@ -208,12 +222,12 @@ int readData(std::list<mallocStructure> &mallocList,
 }
 
 
-int findLeaks(std::list<mallocStructure> &mallocList,
+int findLeaks(std::list<MallocStructure> &mallocList,
               std::list<u_int64_t> &freeList,
-              std::list<mallocStructure> &leakList)
+              std::list<MallocStructure> &leakList)
 {
     std::list<u_int64_t>::iterator it;
-    for(mallocStructure mallocData : mallocList)
+    for(MallocStructure mallocData : mallocList)
     {
         it = std::find(freeList.begin(), freeList.end(), mallocData.address);
         if(it == freeList.end())
@@ -225,42 +239,107 @@ int findLeaks(std::list<mallocStructure> &mallocList,
 }
 
 
-int printOutput(std::list<mallocStructure> &leakList)
+int printOutput(std::list<MallocStructure> &leakList)
 {
-    for(mallocStructure leakMallocStructure : leakList)
+    for(MallocStructure leakMallocStructure : leakList)
     {
-        std::cerr<<"*******************************************************"
-                   "\n";
-        std::cerr<<"memory leak at address: 0x"<<std::hex<<leakMallocStructure.address
-               <<" size of memory leak: "<<std::dec<<leakMallocStructure.memorySize
-               <<" bytes\nreturn address: 0x"<<std::hex
-               <<leakMallocStructure.backtrace<<"\n\n";
-        std::string line;
+        std::string file;
         int32_t lineNumber;
-        if(getFileAndLine(line, lineNumber, leakMallocStructure.backtrace))
+        if(getFileAndLine(file, lineNumber, leakMallocStructure.backtrace))
             return 1;
 
+        std::cout<<"*******************************************************\n";
+        std::cout<<"size of memory leak: "<<std::dec
+               <<leakMallocStructure.memorySize
+               <<" bytes\nreturn address: 0x"<<std::hex
+               <<leakMallocStructure.backtrace<<std::dec<<"\n";
+
+        if(!file.empty())
+            std::cout<<"file: "<<file<<" line: "<<lineNumber<<"\n";
+        else
+            std::cout<<"file: unknown line: unknown\n";
+        std::cout<<"\n\n";
     }
 }
 
 
-int printReducedOutput(std::list<mallocStructure> &leakList)
+class LeakSummaryStruct{
+public:
+    u_int64_t address;
+    u_int64_t completeLeakedMemory;
+    u_int64_t backtrace;
+    u_int32_t numberOfAllocations;
+
+    bool operator ==(const LeakSummaryStruct& value)
+    {
+        return backtrace == value.backtrace;
+    }
+    bool operator ==(const MallocStructure& value)
+    {
+        return backtrace == value.backtrace;
+    }
+};
+
+
+int printReducedOutput(std::list<MallocStructure> &leakList)
 {
     leakList.sort(compareBacktrace);
+    std::list<LeakSummaryStruct> leakSummaryList;
+    std::list<LeakSummaryStruct>::iterator it;
+    for(MallocStructure leakMallocStructure : leakList)
+    {
+        it = std::find(leakSummaryList.begin(), leakSummaryList.end(), leakMallocStructure);
+        if(it == leakSummaryList.end())
+        {
+            LeakSummaryStruct leakSumaryInit;
+            leakSumaryInit.address = leakMallocStructure.address;
+            leakSumaryInit.backtrace = leakMallocStructure.backtrace;
+            leakSumaryInit.completeLeakedMemory = leakMallocStructure.memorySize;
+            leakSumaryInit.numberOfAllocations = 1;
+            leakSummaryList.push_back(leakSumaryInit);
+        }
+        else
+        {
+            (*it).completeLeakedMemory += leakMallocStructure.memorySize;
+            (*it).numberOfAllocations++;
+        }
+    }
+
+    for(LeakSummaryStruct leakSemmaryEntry : leakSummaryList)
+    {
+        std::string file;
+        int32_t lineNumber;
+        if(getFileAndLine(file, lineNumber, leakSemmaryEntry.backtrace))
+            return 1;
+
+        std::cout<<"*******************************************************\n";
+        std::cout<<"summary of leaked memory: "<<std::dec
+               <<leakSemmaryEntry.completeLeakedMemory
+               <<" bytes\n"
+               <<"number of calles: "<<leakSemmaryEntry.numberOfAllocations
+               <<"\nreturn address: 0x"<<std::hex
+               <<leakSemmaryEntry.backtrace<<std::dec<<"\n";
+
+        if(!file.empty())
+            std::cout<<"file: "<<file<<" line: "<<lineNumber<<"\n";
+        else
+            std::cout<<"file: unknown line: unknown\n";
+        std::cout<<"\n\n";
+    }
 }
 
 
 int main(int argc, char *argv[])
 {
-    std::list<mallocStructure> mallocList;
-    std::list<mallocStructure> leakList;
+    std::list<MallocStructure> mallocList;
+    std::list<MallocStructure> leakList;
     std::list<u_int64_t> freeList;
 
     parseOptions(argc, argv);
     if(globalOptions.addr2line.empty() | globalOptions.application.empty() |
             globalOptions.file.empty())
     {
-        printf("Some parameter is missing!!!!\n");
+        std::cerr<<"Some parameter is missing!!!!\n";
         printUsage(argv);
         return 1;
     }
@@ -271,14 +350,11 @@ int main(int argc, char *argv[])
     if(findLeaks(mallocList, freeList, leakList))
         return 1;
 
-//    leakList.unique(sameBacktrace);
-
     if(globalOptions.reduceOutput)
         printReducedOutput(leakList);
     else
         printOutput(leakList);
 
-
-    //return a.exec();
+    return 0;
 }
 
