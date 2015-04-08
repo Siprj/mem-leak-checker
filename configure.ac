@@ -3,13 +3,17 @@
 
 AC_PREREQ([2.69])
 AC_INIT([meleak-checker], [0.0.1], [sipr.jan@gmail.com])
+
+# Load this so we can use $build_os
+AC_CANONICAL_SYSTEM
+
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([config.h.in])
 AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
-AC_PROG_CXX
+AC_PROG_CXX(clang++ g++)
 AC_PROG_CPP
 AC_PROG_CC
 AM_PROG_AR
@@ -25,7 +29,16 @@ AC_SEARCH_LIBS([dlsym], [dl], [], [AC_MSG_ERROR([no suitable dl library found])]
 AC_CHECK_HEADERS([fcntl.h stddef.h stdint.h stdlib.h string.h unistd.h])
 
 # Add c++11 support and pthreads
-CXXFLAGS="$CXXFLAGS -std=c++0x -pthread -Wl,-no-as-needed"
+case $build_os in
+  darwin*)
+        CXXFLAGS="$CXXFLAGS -std=gnu++11 -pthread"
+        LDFLAGS="$LDFLAGS -stdlib=libc++"
+        ;;
+    *)
+        CXXFLAGS="$CXXFLAGS -std=c++0x -pthread -Wl,-no-as-needed"
+        ;;
+esac
+
 
 # Init libtool
 # Disable static because this library is not ment to be static (ass static it 

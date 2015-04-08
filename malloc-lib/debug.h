@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
+#include <sys/time.h>
 #include <sys/syscall.h>
 
 
@@ -31,11 +33,17 @@ static const char *levels[] =
 bool checkDebugLevel(uint32_t level);
 
 
+/**
+ * Multi-platform way to get current time
+ */
+void current_utc_time(struct timespec *ts);
+
+
 #define DEBUG_PRINT(level, msg, ...) \
     do { \
         if(checkDebugLevel(level)) { \
             struct timespec ts; \
-            clock_gettime(CLOCK_REALTIME, &ts); \
+            current_utc_time(&ts); \
             fprintf(stderr, "%.2ld:%.2ld:%.2ld.%.3ld [%ld] (%s:%d) %s - ", \
             ts.tv_sec / 3600 % 24, ts.tv_sec / 60 % 60, ts.tv_sec % 60,\
             ts.tv_nsec / 1000000, syscall(SYS_gettid), __FILE__ , \
