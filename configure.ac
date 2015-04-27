@@ -35,13 +35,13 @@ case $build_os in
         LDFLAGS="$LDFLAGS -stdlib=libc++"
         ;;
     *)
-        CXXFLAGS="$CXXFLAGS -std=c++0x -pthread -Wl,-no-as-needed"
+        CXXFLAGS="$CXXFLAGS -std=gnu++11 -pthread -Wl,-no-as-needed"
         ;;
 esac
 
 
 # Init libtool
-# Disable static because this library is not ment to be static (ass static it 
+# Disable static because this library is not ment to be static (ass static it
 # would probably not work correctly).
 LT_INIT([disable-static dlopen])
 AC_SUBST([LIBTOOL_DEPS])
