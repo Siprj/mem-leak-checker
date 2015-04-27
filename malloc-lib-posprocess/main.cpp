@@ -260,6 +260,7 @@ int printOutput(std::list<MallocStructure> &leakList)
             std::cout<<"file: unknown line: unknown\n";
         std::cout<<"\n\n";
     }
+    return 1;
 }
 
 
@@ -326,6 +327,7 @@ int printReducedOutput(std::list<MallocStructure> &leakList)
             std::cout<<"file: unknown line: unknown\n";
         std::cout<<"\n\n";
     }
+    return 1;
 }
 
 
