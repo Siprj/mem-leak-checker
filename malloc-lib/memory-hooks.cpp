@@ -60,7 +60,7 @@ static void  __attribute__((destructor)) deinitMemLeakChecker();
 
 
 // RecursiveCallCounter is thread specific variable which distinguish if the
-// thread is calling memory hooks recursively. Some of internal implementation 
+// thread is calling memory hooks recursively. Some of internal implementation
 // may cause memory allocation (backtrace, etc.).
 __thread int recursiveCallCounter = 0;
 
@@ -392,7 +392,7 @@ void* operator new[](size_t size)
 }
 
 
-void* operator new(std::size_t size, const std::nothrow_t& tag)
+void* operator new(std::size_t size, const std::nothrow_t& tag) noexcept
 {
     INFO("new(std::size_t, const std::nothrow_t& enter");
     (void)tag;
@@ -421,7 +421,7 @@ void* operator new(std::size_t size, const std::nothrow_t& tag)
 }
 
 
-void* operator new[](std::size_t size, const std::nothrow_t& tag)
+void* operator new[](std::size_t size, const std::nothrow_t& tag) noexcept
 {
     INFO("new[](std::size_t, const std::nothrow_t&) enter");
     (void)tag;
@@ -454,7 +454,7 @@ void* operator new[](std::size_t size, const std::nothrow_t& tag)
 }
 
 
-void operator delete(void *ptr)
+void operator delete(void *ptr) noexcept
 {
     INFO("delete(void*) enter");
     if(!waitForInit())
@@ -478,7 +478,7 @@ void operator delete(void *ptr)
 }
 
 
-void operator delete[](void *ptr)
+void operator delete[](void *ptr) noexcept
 {
     INFO("delete[](void*) enter");
     if(!waitForInit())
@@ -502,7 +502,7 @@ void operator delete[](void *ptr)
 }
 
 
-void operator delete(void *ptr, const std::nothrow_t& tag)
+void operator delete(void *ptr, const std::nothrow_t& tag) noexcept
 {
     (void)tag;
     INFO("delete(void*, const std::nothrow_t&) enter");
@@ -527,7 +527,7 @@ void operator delete(void *ptr, const std::nothrow_t& tag)
 }
 
 
-void operator delete[](void *ptr, const std::nothrow_t& tag)
+void operator delete[](void *ptr, const std::nothrow_t& tag) noexcept
 {
     (void)tag;
     INFO("delete[](void*, const std::nothrow_t&) enter");
@@ -552,7 +552,7 @@ void operator delete[](void *ptr, const std::nothrow_t& tag)
 }
 
 
-void operator delete(void* ptr, std::size_t sz)
+void operator delete(void* ptr, std::size_t sz) noexcept
 {
     INFO("delete(void*, std::size_t) enter");
     if(!waitForInit())
@@ -576,7 +576,7 @@ void operator delete(void* ptr, std::size_t sz)
 }
 
 
-void operator delete[](void* ptr, std::size_t sz)
+void operator delete[](void* ptr, std::size_t sz) noexcept
 {
     INFO("delete[](void*, std::size_t) enter");
     if(!waitForInit())
@@ -600,7 +600,7 @@ void operator delete[](void* ptr, std::size_t sz)
 }
 
 
-void operator delete(void* ptr, std::size_t sz, const std::nothrow_t& tag)
+void operator delete(void* ptr, std::size_t sz, const std::nothrow_t& tag) noexcept
 {
     (void)tag;
     INFO("delete(void*, std::size_t, const std::nothrow_t&) enter");
@@ -625,7 +625,7 @@ void operator delete(void* ptr, std::size_t sz, const std::nothrow_t& tag)
 }
 
 
-void operator delete[](void* ptr, std::size_t sz, const std::nothrow_t& tag)
+void operator delete[](void* ptr, std::size_t sz, const std::nothrow_t& tag) noexcept
 {
     (void)tag;
 
